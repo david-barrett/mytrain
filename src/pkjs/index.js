@@ -1,80 +1,115 @@
 var myToken = "e995265f-df60-4787-bafc-af5a433f9b22";
 
-// function fetchTrainData(from, to, label) {
-//   console.log("Fetching trains for " + label);
-//   var url = "https://lite.realtime.nationalrail.co.uk/OpenLDBWS/ldb9.asmx";
-//   var xml = 
-//     '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://thalesgroup.com/RTTI/2013-11-28/TokenHolder" xmlns:ldb="http://thalesgroup.com/RTTI/2017-10-01/ldb/">' +
-//     '<soapenv:Header><typ:AccessToken><typ:TokenValue>' + myToken + '</typ:TokenValue></typ:AccessToken></soapenv:Header>' +
-//     '<soapenv:Body><ldb:GetArrivalDepartureBoardRequest>' +
-//     '<ldb:numRows>2</ldb:numRows><ldb:crs>' + from + '</ldb:crs><ldb:filterCrs>' + to + '</ldb:filterCrs><ldb:filterType>to</ldb:filterType>' +
-//     '</ldb:GetArrivalDepartureBoardRequest></soapenv:Body></soapenv:Envelope>';
-
-//   var xhr = new XMLHttpRequest();
-//   xhr.open("POST", url);
-//   xhr.setRequestHeader("Content-Type", "text/xml");
-//   xhr.onload = function() {
-//     var response = xhr.responseText;
-//     console.log("Raw Response: " + response); // CRITICAL: Check this in CloudPebble Logs!
-
-//     if (response.indexOf("Fault") !== -1 || response.indexOf("Unauthorized") !== -1) {
-//         Pebble.sendAppMessage({"STATION_LABEL": label, "TRAIN_INFO": "TOKEN ERROR", "TRAIN_TIME": "401"});
-//         return;
-//     }
-
-//     // This looks for anything between <service> and </service> tags regardless of namespace
-//     var serviceRegex = /<[^:]*:service>([\s\S]*?)<\/[^:]*:service>/g;
-//     var match;
-//     var selectedService = null;
-
-//     while ((match = serviceRegex.exec(response)) !== null) {
-//         var serviceXml = match[1];
-//         var stdMatch = serviceXml.match(/<[^:]*:std>([^<]+)/);
-//         var etdMatch = serviceXml.match(/<[^:]*:etd>([^<]+)/);
-
-//         if (stdMatch && etdMatch) {
-//             var std = stdMatch[1];
-//             var etd = etdMatch[1];
-
-//             if (etd === "Cancelled") continue;
-
-//             selectedService = { time: std, status: etd };
-//             break; 
-//         }
-//     }
-
-//     if (selectedService) {
-//         // Normalize status to "ON TIME" or the specific delay/time
-//         var statusText = (selectedService.status.toLowerCase() === "on time") ? "ON TIME" : selectedService.status.toUpperCase();
-//         Pebble.sendAppMessage({
-//             "STATION_LABEL": label,
-//             "TRAIN_INFO": statusText,
-//             "TRAIN_TIME": selectedService.time
-//         });
-//     } else {
-//         // If we got here, the API worked but no trains were found in the next 2 hours
-//         Pebble.sendAppMessage({
-//             "STATION_LABEL": label,
-//             "TRAIN_INFO": "NO DIRECT TRAINS",
-//             "TRAIN_TIME": "N/A"
-//         });
-//     }
-//   };
-//   xhr.send(xml);
-// }
+var DEBUG = true; // Set to false when your National Rail token arrives!
 
 function fetchTrainData(from, to, label) {
-  console.log("Mocking data for: " + from + " to " + to);
-  
-  // Simulate a 1-second network delay
-  setTimeout(function() {
-    Pebble.sendAppMessage({
-      "STATION_LABEL": label,
-      "TRAIN_INFO": "On Time (Mock)",
-      "TRAIN_TIME": "14:45"
-    });
-  }, 1000);
+  console.log("Fetching trains for " + label + (DEBUG ? " [MOCK MODE]" : ""));
+
+  var processResponse = function(response) {
+    try {
+      console.log("Starting to parse response...");
+
+      // Flexible regex for both Mock and Real XML
+      var serviceRegex = /<[^:>]*service>([\s\S]*?)<\/[^:>]*service>/g;
+      var match;
+      var validTrains = [];
+
+      while ((match = serviceRegex.exec(response)) !== null) {
+        var serviceXml = match[1];
+        var stdMatch = serviceXml.match(/<[^:>]*std>([^<]+)/);
+        var etdMatch = serviceXml.match(/<[^:>]*etd>([^<]+)/);
+        
+        if (stdMatch && etdMatch) {
+          var std = stdMatch[1];
+          var etd = etdMatch[1];
+          if (etd === "Cancelled") continue;
+          
+          var liveTime = (etd.indexOf(":") !== -1) ? etd : std;
+          var isDelayed = (etd.indexOf(":") !== -1 && etd !== std);
+          
+          validTrains.push({ 
+            displayTime: liveTime, 
+            scheduled: std, 
+            status: etd, 
+            delayed: isDelayed 
+          });
+          if (validTrains.length >= 3) break;
+        }
+      }
+
+      if (validTrains.length > 0) {
+        var primary = validTrains[0];
+        
+        // --- 1. DEFINE statusText ---
+        var statusText = (primary.status.toLowerCase() === "on time") ? "ON TIME" : 
+                         (primary.delayed ? "DELAYED (" + primary.scheduled + ")" : primary.status.toUpperCase());
+
+        // --- 2. DEFINE nextString ---
+        var followers = [];
+        for (var i = 1; i < validTrains.length; i++) {
+          var f = validTrains[i];
+          var fTime = (f.status.indexOf(":") !== -1) ? f.status : f.scheduled;
+          if (f.status.indexOf(":") !== -1 && f.status !== f.scheduled) { fTime += "*"; }
+          followers.push(fTime);
+        }
+        var nextString = (followers.length > 0) ? followers.join(", ") : "End of service";
+
+        console.log("Success! Sending to watch: " + statusText);
+        
+        Pebble.sendAppMessage({
+          "STATION_LABEL": label,
+          "TRAIN_INFO": statusText,
+          "TRAIN_TIME": primary.displayTime,
+          "NEXT_TRAIN": nextString
+        });
+
+      } else {
+        console.log("No valid trains found. Sending 'NO SERVICE'.");
+        Pebble.sendAppMessage({
+          "STATION_LABEL": label,
+          "TRAIN_INFO": "NO SERVICE", 
+          "TRAIN_TIME": "--:--",
+          "NEXT_TRAIN": "Check timetable"
+        });
+      }
+    } catch (err) {
+      console.log("JS CRASHED: " + err.message);
+      Pebble.sendAppMessage({
+        "STATION_LABEL": label, "TRAIN_INFO": "JS ERROR", "TRAIN_TIME": "500", "NEXT_TRAIN": "Check logs"
+      });
+    }
+  };
+
+  if (DEBUG) {
+    var mockResponse = '<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body><GetArrivalDepartureBoardResponse xmlns="http://thalesgroup.com/RTTI/2017-10-01/ldb/"><GetStationBoardResult><trainServices>' +
+      '<service><std>15:45</std><etd>15:52</etd></service>' +
+      '<service><std>16:05</std><etd>16:12</etd></service>' +
+      '<service><std>16:20</std><etd>Cancelled</etd></service>' +
+      '<service><std>16:35</std><etd>On time</etd></service>' +
+      '</trainServices></GetStationBoardResult></GetArrivalDepartureBoardResponse></soap:Body></soap:Envelope>';
+    processResponse(mockResponse);
+  } else {
+    var xhr = new XMLHttpRequest();
+    xhr.open("POST", "https://lite.realtime.nationalrail.co.uk/OpenLDBWS/ldb9.asmx");
+    xhr.setRequestHeader("Content-Type", "text/xml");
+    xhr.onload = function() { processResponse(xhr.responseText); };
+    xhr.send('...your xml string...');
+  }
 }
+
+// function fetchTrainData(from, to, label) {
+//   console.log("Mocking data for: " + from + " to " + to);
+  
+//   // Simulate a 1-second network delay
+//   setTimeout(function() {
+//     Pebble.sendAppMessage({
+//       "STATION_LABEL": label,
+//       "TRAIN_INFO": "On Time (Mock)",
+//       "TRAIN_TIME": "14:45",
+//       "NEXT_TRAIN": "15:45, 16:45"
+//     });
+//   }, 1000);
+// }
 
 function parseNextTrain(xml) {
   // Logic: Check first service. If 'Cancelled', look at second service.
