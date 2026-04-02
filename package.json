@@ -1,0 +1,37 @@
+{
+    "author": "david.barrett.0@gmail.com",
+    "dependencies": {},
+    "keywords": [],
+    "name": "mytrain",
+    "pebble": {
+        "capabilities": [
+            "location"
+        ],
+        "displayName": "MyTrain",
+        "enableMultiJS": true,
+        "messageKeys": [
+            "TRAIN_INFO",
+            "TRAIN_TIME",
+            "STATION_LABEL"
+        ],
+        "projectType": "native",
+        "resources": {
+            "media": []
+        },
+        "sdkVersion": "3",
+        "targetPlatforms": [
+            "aplite",
+            "basalt",
+            "chalk",
+            "diorite",
+            "emery",
+            "gabbro",
+            "flint"
+        ],
+        "uuid": "69c0d6b6-35af-4f7a-8a66-dbf131aa025b",
+        "watchapp": {
+            "watchface": false
+        }
+    },
+    "version": "1.0.0"
+}
