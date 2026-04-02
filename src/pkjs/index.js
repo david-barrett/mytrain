@@ -89,11 +89,21 @@ function fetchTrainData(from, to, label) {
       '</trainServices></GetStationBoardResult></GetArrivalDepartureBoardResponse></soap:Body></soap:Envelope>';
     processResponse(mockResponse);
   } else {
+    var url = "https://lite.realtime.nationalrail.co.uk/OpenLDBWS/ldb9.asmx";
+    var xml = '<soapenv:Envelope ...>' + /* your xml here */ '</soapenv:Envelope>';
     var xhr = new XMLHttpRequest();
-    xhr.open("POST", "https://lite.realtime.nationalrail.co.uk/OpenLDBWS/ldb9.asmx");
+    xhr.open("POST", url);
     xhr.setRequestHeader("Content-Type", "text/xml");
     xhr.onload = function() { processResponse(xhr.responseText); };
-    xhr.send('...your xml string...');
+    xhr.onerror = function() {
+      Pebble.sendAppMessage({
+        "STATION_LABEL": label,
+        "TRAIN_INFO": "OFFLINE",
+        "TRAIN_TIME": "---",
+        "NEXT_TRAIN": "No Internet"
+      });
+    };
+    xhr.send(xml);
   }
 }
 
