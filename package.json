@@ -13,7 +13,8 @@
             "TRAIN_INFO",
             "TRAIN_TIME",
             "STATION_LABEL",
-            "NEXT_TRAIN"
+            "NEXT_TRAIN",
+            "REFRESH"
         ],
         "projectType": "native",
         "resources": {

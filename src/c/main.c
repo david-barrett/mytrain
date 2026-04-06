@@ -19,6 +19,33 @@ static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
   update_time();
 }
 
+
+static void request_refresh() {
+  DictionaryIterator *iter;
+  app_message_outbox_begin(&iter);
+  
+  // Send a dummy "REFRESH" key (you'll need to add this to Settings)
+  dict_write_uint8(iter, MESSAGE_KEY_REFRESH, 1);
+  
+  app_message_outbox_send();
+  
+  // Visually show the user we are working
+  text_layer_set_text(s_status_layer, "Refreshing...");
+}
+
+// The Long Click handler
+static void down_long_click_handler(ClickRecognizerRef recognizer, void *context) {
+  request_refresh();
+}
+
+// Register the clicks
+static void click_config_provider(void *context) {
+  // Bind the LONG CLICK of the DOWN button
+  // 500ms is the default hold time
+  window_long_click_subscribe(BUTTON_ID_DOWN, 500, down_long_click_handler, NULL);
+}
+
+
 static void inbox_received_callback(DictionaryIterator *iterator, void *context) {
   Tuple *label_tuple = dict_find(iterator, MESSAGE_KEY_STATION_LABEL);
   Tuple *info_tuple = dict_find(iterator, MESSAGE_KEY_TRAIN_INFO);
@@ -80,6 +107,10 @@ static void main_window_load(Window *window) {
   text_layer_set_text_alignment(s_current_clock_layer, GTextAlignmentCenter);
   text_layer_set_font(s_current_clock_layer, fonts_get_system_font(FONT_KEY_BITHAM_30_BLACK));
   layer_add_child(window_layer, text_layer_get_layer(s_current_clock_layer));
+  
+  
+  // add click handler
+  window_set_click_config_provider(window, click_config_provider);
 }
 
 static void init() {
